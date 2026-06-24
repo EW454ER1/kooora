@@ -329,9 +329,9 @@ img { max-width: 100%; height: auto; display: block; }
 var WORKER_URL = 'https://kooora.mexcbingx15.workers.dev';
 
 var TELEGRAM_CONFIG = {
-  username: 'gmt_apt',
-  url: 'https://t.me/gmt_apt',
-  name: 'GMT APT',
+  username: '@boot_RM',
+  url: 'https://t.me/Boot_RM',
+  name: 'boot rm',
   description: 'اشترك لتصلك تنبيهات المباريات والروابط أولاً بأول'
 };
 
