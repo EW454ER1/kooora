@@ -164,6 +164,34 @@ function jsonResponse(data, status) {
   });
 }
 
+  "source": "https://www.yallashoot-id1.xyz",
+  "scraped_at": "2026-06-24T02:50:21.200Z",
+  "timezone": "Africa/Cairo",
+  "version": "3.1",
+  "telegram": {
+    "username": "gmt_apt",
+    "url": "https://t.me/gmt_apt",
+    "description": "اشترك لتصلك تنبيهات المباريات أولاً بأول"
+  },
+  "matches": {
+    "yesterday": [],
+    "today": [],
+    "tomorrow": []
+  },
+  "stats": {
+    "total": 0,
+    "by_section": {
+      "yesterday": 0,
+      "today": 0,
+      "tomorrow": 0
+    },
+    "by_status": {
+      "live": 0,
+      "upcoming": 0,
+      "finished": 0
+    }
+  }
+}
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
