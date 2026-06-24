@@ -1,5 +1,5 @@
 /**
- * Yalla Shoot Scraper v3 - Clean Version
+ * Yalla Shoot Scraper v3.1 - Fixed Cache Keys
  */
 
 const BASE_URL = 'https://www.yallashoot-id1.xyz';
@@ -23,7 +23,6 @@ const STATUS_LABELS = {
   finished: 'انتهت'
 };
 
-// SVG Icons (بديل عن PNG - أصغر وأسرع)
 const ICON_192_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0a3d1f"/><stop offset="100%" stop-color="#1a5c2f"/></linearGradient></defs><rect width="192" height="192" fill="url(#g)"/><text x="96" y="110" font-size="80" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="140" r="14" fill="white" stroke="#0f7a3a" stroke-width="2"/></svg>';
 
 const ICON_MASK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="#0f7a3a"/><text x="96" y="105" font-size="65" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="135" r="12" fill="white"/></svg>';
@@ -72,7 +71,7 @@ function parseMatches(html, section) {
     const goals = [...block.matchAll(/<span class="RS-goals">\s*(\d+)\s*<\/span>/g)].map(m => parseInt(m[1]));
     const cls = (block.match(/<div class="AY_Match\s+([^"]+)"/) || [])[1] || '';
     const status = statusFromClass(cls.split(/\s+/));
-    
+
     const infoBlock = block.match(/<div class="MT_Info">\s*<ul>([\s\S]*?)<\/ul>/);
     let channel = '', comp = '';
     if (infoBlock) {
@@ -108,7 +107,7 @@ async function scrapeSection(section) {
   try {
     const r = await fetch(BASE_URL + '/' + path + '/', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; CFWorker/3.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; CFWorker/3.1)',
         'Accept-Language': 'ar,en;q=0.9'
       }
     });
@@ -120,29 +119,31 @@ async function scrapeSection(section) {
   }
 }
 
-async function handleAll(ctx) {
-  const cache = caches.default;
-  const key = 'all-v3';
-  const cached = await cache.match(key);
-  if (cached) return cached;
-
+async function scrapeAllSections() {
   const [y, t, tm] = await Promise.all([
     scrapeSection('yesterday'),
     scrapeSection('today'),
     scrapeSection('tomorrow')
   ]);
+  return { yesterday: y, today: t, tomorrow: tm };
+}
 
-  const all = [...y, ...t, ...tm];
-  const data = {
+function buildAllResponse(matches) {
+  const all = [...matches.yesterday, ...matches.today, ...matches.tomorrow];
+  return {
     source: BASE_URL,
     scraped_at: new Date().toISOString(),
     timezone: 'Africa/Cairo',
-    version: '3.0',
+    version: '3.1',
     telegram: TELEGRAM,
-    matches: { yesterday: y, today: t, tomorrow: tm },
+    matches: matches,
     stats: {
       total: all.length,
-      by_section: { yesterday: y.length, today: t.length, tomorrow: tm.length },
+      by_section: {
+        yesterday: matches.yesterday.length,
+        today: matches.today.length,
+        tomorrow: matches.tomorrow.length
+      },
       by_status: {
         live: all.filter(m => m.status === 'live').length,
         upcoming: all.filter(m => m.status === 'upcoming').length,
@@ -150,10 +151,6 @@ async function handleAll(ctx) {
       }
     }
   };
-
-  const response = jsonResponse(data);
-  ctx.waitUntil(cache.put(key, response.clone()));
-  return response;
 }
 
 function jsonResponse(data, status) {
@@ -172,7 +169,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // PWA
+    // ===== PWA Endpoints =====
     if (path === '/manifest.json' || path === '/manifest.webmanifest') {
       return new Response(JSON.stringify(MANIFEST, null, 2), {
         headers: {
@@ -182,6 +179,7 @@ export default {
         }
       });
     }
+
     if (path === '/sw.js') {
       return new Response(SW_CODE, {
         headers: {
@@ -192,49 +190,73 @@ export default {
         }
       });
     }
+
     if (path === '/icon-192.png' || path === '/icon-512.png') {
       return new Response(ICON_192_SVG, {
         headers: {
           'Content-Type': 'image/svg+xml',
-          'Cache-Control': 'public, max-age=2592000'
+          'Cache-Control': 'public, max-age=2592000',
+          'Access-Control-Allow-Origin': '*'
         }
       });
     }
+
     if (path === '/icon-maskable.png') {
       return new Response(ICON_MASK_SVG, {
         headers: {
           'Content-Type': 'image/svg+xml',
-          'Cache-Control': 'public, max-age=2592000'
+          'Cache-Control': 'public, max-age=2592000',
+          'Access-Control-Allow-Origin': '*'
         }
       });
     }
 
-    // Scraping
+    // ===== Scraping Endpoints (مع Cache صحيح) =====
+
     if (path === '/' || path === '/scrape/all') {
-      return handleAll(ctx);
+      // استخدام URL الطلب كمفتاح cache (هذا يحل المشكلة!)
+      const cache = caches.default;
+      const cached = await cache.match(request);
+      if (cached) return cached;
+
+      const matches = await scrapeAllSections();
+      const response = jsonResponse(buildAllResponse(matches));
+      ctx.waitUntil(cache.put(request, response.clone()));
+      return response;
     }
 
     const m = path.match(/^\/scrape\/(yesterday|today|tomorrow)\/?$/);
     if (m) {
-      return handleAll(ctx).then(r => r.json()).then(data => {
-        return jsonResponse({
-          source: BASE_URL,
-          section: m[1],
-          scraped_at: new Date().toISOString(),
-          telegram: TELEGRAM,
-          matches: data.matches[m[1]]
-        });
+      const section = m[1];
+      const cache = caches.default;
+      const cached = await cache.match(request);
+      if (cached) return cached;
+
+      const matches = await scrapeAllSections();
+      const response = jsonResponse({
+        source: BASE_URL,
+        section: section,
+        scraped_at: new Date().toISOString(),
+        telegram: TELEGRAM,
+        count: matches[section].length,
+        matches: matches[section]
       });
+      ctx.waitUntil(cache.put(request, response.clone()));
+      return response;
     }
 
     if (path === '/health') {
       return jsonResponse({
         status: 'ok',
-        version: '3.0',
-        timestamp: new Date().toISOString()
+        version: '3.1',
+        timestamp: new Date().toISOString(),
+        endpoints: ['/scrape/all', '/scrape/today', '/manifest.json', '/icon-192.png']
       });
     }
 
-    return new Response('Not Found. Try: /health, /scrape/all, /manifest.json', { status: 404 });
+    return new Response('Not Found. Endpoints: /scrape/all, /scrape/today, /scrape/yesterday, /scrape/tomorrow, /manifest.json, /icon-192.png, /health', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    });
   }
 };
