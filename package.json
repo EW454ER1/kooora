@@ -1,5 +1,10 @@
 {
   "name": "yalla-worker",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "description": "Yalla Shoot Scraper Worker for Blogger",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  }
 }
