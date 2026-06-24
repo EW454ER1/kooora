@@ -1,36 +1,51 @@
-/**
- * Yalla Shoot Scraper v3.1 - Fixed Cache Keys
- */
+/* ========================================================================
+   Yalla Shoot Scraper v3.1 - Worker كامل
+   ========================================================================
+   يقوم بـ:
+   1. سكرابينغ مباريات yallashoot-id1.xyz كل ساعة
+   2. خدمة PWA (manifest + sw + icons)
+   3. دعم تيليجرام @gmt_apt في البيانات
+   ======================================================================== */
+
+// ============== الإعدادات الأساسية ==============
 
 const BASE_URL = 'https://www.yallashoot-id1.xyz';
-const CACHE_TTL_SECONDS = 3600;
+const CACHE_TTL_SECONDS = 3600; // ساعة واحدة - احتراماً للموقع
 
+// معلومات قناة تيليجرام
 const TELEGRAM = {
   username: 'gmt_apt',
   url: 'https://t.me/gmt_apt',
   description: 'اشترك لتصلك تنبيهات المباريات أولاً بأول'
 };
 
+// أسماء أقسام الموقع
 const SECTIONS = {
   yesterday: 'matches-yesterday',
   today: 'matches-today',
   tomorrow: 'matches-tomorrow'
 };
 
+// ترجمة الحالات
 const STATUS_LABELS = {
   live: 'جارية الآن',
   upcoming: 'لم تبدأ بعد',
-  finished: 'انتهت'
+  finished: 'انتهت',
+  unknown: 'غير معروف'
 };
 
-const ICON_192_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0a3d1f"/><stop offset="100%" stop-color="#1a5c2f"/></linearGradient></defs><rect width="192" height="192" fill="url(#g)"/><text x="96" y="110" font-size="80" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="140" r="14" fill="white" stroke="#0f7a3a" stroke-width="2"/></svg>';
+// ============== أيقونات PWA (SVG - خفيفة الحجم) ==============
 
-const ICON_MASK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="#0f7a3a"/><text x="96" y="105" font-size="65" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="135" r="12" fill="white"/></svg>';
+const ICON_192_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0a3d1f"/><stop offset="100%" stop-color="#1a5c2f"/></linearGradient></defs><rect width="192" height="192" fill="url(#g)"/><text x="96" y="115" font-size="75" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="150" r="14" fill="white" stroke="#0f7a3a" stroke-width="3"/></svg>';
+
+const ICON_MASK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="#0f7a3a"/><text x="96" y="110" font-size="65" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="140" r="12" fill="white"/></svg>';
+
+// ============== PWA Manifest ==============
 
 const MANIFEST = {
   name: 'يلا شوت - جدول المباريات',
   short_name: 'يلا شوت',
-  description: 'جدول مباريات كرة القدم - تحديث تلقائي',
+  description: 'جدول مباريات كرة القدم - تحديث تلقائي كل ساعة',
   start_url: '/',
   scope: '/',
   display: 'standalone',
@@ -45,11 +60,17 @@ const MANIFEST = {
   ]
 };
 
-const SW_CODE = `self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', e => {
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-});`;
+// ============== Service Worker Code ==============
+
+const SW_CODE = [
+  'self.addEventListener("install", e => self.skipWaiting());',
+  'self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));',
+  'self.addEventListener("fetch", e => {',
+  '  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));',
+  '});'
+].join('\n');
+
+// ============== دوال مساعدة ==============
 
 function statusFromClass(classes) {
   if (classes.includes('live')) return 'live';
@@ -58,8 +79,33 @@ function statusFromClass(classes) {
   return 'unknown';
 }
 
+function jsonResponse(data, status) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status: status || 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=' + CACHE_TTL_SECONDS
+    }
+  });
+}
+
+function svgResponse(svg) {
+  return new Response(svg, {
+    headers: {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=2592000',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
+}
+
+// ============== سكرابينغ yallashoot ==============
+
 function parseMatches(html, section) {
   const matches = [];
+  if (!html) return matches;
+
   const blocks = html.match(/<div class="AY_Match[^"]*"[^>]*>[\s\S]*?(?=<div class="AY_Match|$)/g) || [];
 
   for (const block of blocks) {
@@ -90,7 +136,11 @@ function parseMatches(html, section) {
       home_team: { name: home[3].trim(), logo: home[2].trim() },
       away_team: { name: away[3].trim(), logo: away[2].trim() },
       time: t ? t[1].trim() : '',
-      score: { home: goals[0] ?? 0, away: goals[1] ?? 0, display: (goals[0] ?? 0) + ' - ' + (goals[1] ?? 0) },
+      score: {
+        home: goals[0] ?? 0,
+        away: goals[1] ?? 0,
+        display: (goals[0] ?? 0) + ' - ' + (goals[1] ?? 0)
+      },
       status: status,
       status_label: STATUS_LABELS[status] || '',
       channel: channel,
@@ -107,8 +157,12 @@ async function scrapeSection(section) {
   try {
     const r = await fetch(BASE_URL + '/' + path + '/', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; CFWorker/3.1)',
-        'Accept-Language': 'ar,en;q=0.9'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
       }
     });
     if (!r.ok) return [];
@@ -127,6 +181,8 @@ async function scrapeAllSections() {
   ]);
   return { yesterday: y, today: t, tomorrow: tm };
 }
+
+// ============== بناء الاستجابات ==============
 
 function buildAllResponse(matches) {
   const all = [...matches.yesterday, ...matches.today, ...matches.tomorrow];
@@ -153,51 +209,28 @@ function buildAllResponse(matches) {
   };
 }
 
-function jsonResponse(data, status) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status: status || 200,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=' + CACHE_TTL_SECONDS
-    }
-  });
-}
+// ============== نقطة الدخول الرئيسية ==============
 
-  "source": "https://www.yallashoot-id1.xyz",
-  "scraped_at": "2026-06-24T02:50:21.200Z",
-  "timezone": "Africa/Cairo",
-  "version": "3.1",
-  "telegram": {
-    "username": "gmt_apt",
-    "url": "https://t.me/gmt_apt",
-    "description": "اشترك لتصلك تنبيهات المباريات أولاً بأول"
-  },
-  "matches": {
-    "yesterday": [],
-    "today": [],
-    "tomorrow": []
-  },
-  "stats": {
-    "total": 0,
-    "by_section": {
-      "yesterday": 0,
-      "today": 0,
-      "tomorrow": 0
-    },
-    "by_status": {
-      "live": 0,
-      "upcoming": 0,
-      "finished": 0
-    }
-  }
-}
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // ===== CORS Preflight =====
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
     // ===== PWA Endpoints =====
+
     if (path === '/manifest.json' || path === '/manifest.webmanifest') {
       return new Response(JSON.stringify(MANIFEST, null, 2), {
         headers: {
@@ -211,7 +244,7 @@ export default {
     if (path === '/sw.js') {
       return new Response(SW_CODE, {
         headers: {
-          'Content-Type': 'application/javascript',
+          'Content-Type': 'application/javascript; charset=utf-8',
           'Access-Control-Allow-Origin': '*',
           'Service-Worker-Allowed': '/',
           'Cache-Control': 'public, max-age=86400'
@@ -220,29 +253,16 @@ export default {
     }
 
     if (path === '/icon-192.png' || path === '/icon-512.png') {
-      return new Response(ICON_192_SVG, {
-        headers: {
-          'Content-Type': 'image/svg+xml',
-          'Cache-Control': 'public, max-age=2592000',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
+      return svgResponse(ICON_192_SVG);
     }
 
     if (path === '/icon-maskable.png') {
-      return new Response(ICON_MASK_SVG, {
-        headers: {
-          'Content-Type': 'image/svg+xml',
-          'Cache-Control': 'public, max-age=2592000',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
+      return svgResponse(ICON_MASK_SVG);
     }
 
     // ===== Scraping Endpoints (مع Cache صحيح) =====
 
     if (path === '/' || path === '/scrape/all') {
-      // استخدام URL الطلب كمفتاح cache (هذا يحل المشكلة!)
       const cache = caches.default;
       const cached = await cache.match(request);
       if (cached) return cached;
@@ -273,16 +293,57 @@ export default {
       return response;
     }
 
+    // ===== Debug Endpoint (لتشخيص المشاكل) =====
+
+    if (path === '/debug') {
+      const targetUrl = url.searchParams.get('url') || BASE_URL + '/matches-today/';
+      try {
+        const r = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+          }
+        });
+        const html = await r.text();
+        const matches = parseMatches(html, 'debug');
+        return jsonResponse({
+          target_url: targetUrl,
+          status: r.status,
+          html_length: html.length,
+          html_first_500: html.substring(0, 500),
+          html_last_500: html.substring(html.length - 500),
+          has_AY_Match: html.includes('AY_Match'),
+          has_MT_Team: html.includes('MT_Team'),
+          has_class_AY_Match: html.includes('class="AY_Match'),
+          AY_Match_count: (html.match(/AY_Match/g) || []).length,
+          MT_Team_count: (html.match(/MT_Team/g) || []).length,
+          matches_parsed: matches.length,
+          sample_matches: matches.slice(0, 2)
+        });
+      } catch (e) {
+        return jsonResponse({ error: e.message, stack: e.stack }, 500);
+      }
+    }
+
+    // ===== Health Check =====
+
     if (path === '/health') {
       return jsonResponse({
         status: 'ok',
         version: '3.1',
         timestamp: new Date().toISOString(),
-        endpoints: ['/scrape/all', '/scrape/today', '/manifest.json', '/icon-192.png']
+        cache_ttl_seconds: CACHE_TTL_SECONDS,
+        telegram_channel: TELEGRAM,
+        endpoints: {
+          pwa: ['/manifest.json', '/sw.js', '/icon-192.png', '/icon-maskable.png'],
+          scraping: ['/scrape/all', '/scrape/today', '/scrape/yesterday', '/scrape/tomorrow'],
+          utility: ['/health', '/debug']
+        }
       });
     }
 
-    return new Response('Not Found. Endpoints: /scrape/all, /scrape/today, /scrape/yesterday, /scrape/tomorrow, /manifest.json, /icon-192.png, /health', {
+    return new Response('Not Found. Available endpoints:\n/health, /scrape/all, /scrape/today, /manifest.json, /icon-192.png, /debug?url=...', {
       status: 404,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     });
