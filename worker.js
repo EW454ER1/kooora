@@ -1,10 +1,6 @@
 /* ========================================================================
-   Yalla Shoot Scraper v3.2 - FIXED PARSER
-   ========================================================================
-   الإصلاح: استخدام indexOf بدل regex لتجنب backtracking
+   Yalla Shoot Scraper v3.2 - FIXED PARSER (نسخة كاملة جاهزة للنسخ)
    ======================================================================== */
-
-// ============== الإعدادات الأساسية ==============
 
 const BASE_URL = 'https://www.yallashoot-id1.xyz';
 const CACHE_TTL_SECONDS = 3600;
@@ -27,8 +23,6 @@ const STATUS_LABELS = {
   finished: 'انتهت',
   unknown: ''
 };
-
-// ============== أيقونات PWA (SVG) ==============
 
 const ICON_192_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0a3d1f"/><stop offset="100%" stop-color="#1a5c2f"/></linearGradient></defs><rect width="192" height="192" fill="url(#g)"/><text x="96" y="115" font-size="75" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">YS</text><circle cx="96" cy="150" r="14" fill="white" stroke="#0f7a3a" stroke-width="3"/></svg>';
 
@@ -54,8 +48,6 @@ const MANIFEST = {
 
 const SW_CODE = 'self.addEventListener("install",e=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));self.addEventListener("fetch",e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});';
 
-// ============== Parser المُحسّن (بدون backtracking) ==============
-
 function statusFromClass(classes) {
   if (classes.includes('live')) return 'live';
   if (classes.includes('not-started')) return 'upcoming';
@@ -67,7 +59,6 @@ function parseMatches(html, section) {
   const matches = [];
   if (!html || html.length < 100) return matches;
 
-  // الخطوة 1: إيجاد مواقع كل بطاقة AY_Match
   const positions = [];
   const searchStr = '<div class="AY_Match';
   let pos = 0;
@@ -78,13 +69,11 @@ function parseMatches(html, section) {
     pos = idx + searchStr.length;
   }
 
-  // الخطوة 2: استخراج كل بلوك على حدة
   for (let i = 0; i < positions.length; i++) {
     const start = positions[i];
     const end = i + 1 < positions.length ? positions[i + 1] : html.length;
     const block = html.substring(start, end);
 
-    // استخراج أسماء الفرق (أول اسمين)
     const tmNames = [];
     const nameRegex = /<div class="TM_Name">\s*([^<]+?)\s*<\/div>/g;
     let nm;
@@ -92,7 +81,6 @@ function parseMatches(html, section) {
       tmNames.push(nm[1].trim());
     }
 
-    // استخراج الشعارات (أول شعارين)
     const logos = [];
     const logoRegex = /data-src="([^"]+\.png)"/g;
     let lg;
@@ -102,11 +90,9 @@ function parseMatches(html, section) {
 
     if (tmNames.length < 2) continue;
 
-    // الوقت
     const timeMatch = block.match(/<span class="MT_Time">\s*([^<]+?)\s*<\/span>/);
     const time = timeMatch ? timeMatch[1].trim() : '';
 
-    // النتيجة
     const goals = [];
     const goalRegex = /<span class="RS-goals">\s*(\d+)\s*<\/span>/g;
     let gm;
@@ -116,15 +102,12 @@ function parseMatches(html, section) {
     const homeGoals = goals[0] ?? 0;
     const awayGoals = goals[1] ?? 0;
 
-    // الحالة من class
     const clsMatch = block.match(/<div class="AY_Match[^"]*?\s+(live|not-started|finished|ft)[^"]*"/);
     const status = clsMatch ? statusFromClass([clsMatch[1]]) : 'unknown';
 
-    // الحالة من MT_Stat
     const statMatch = block.match(/<div class="MT_Stat">\s*([^<]+?)\s*<\/div>/);
     const statusLabel = STATUS_LABELS[status] || (statMatch ? statMatch[1].trim() : '');
 
-    // معلومات (القناة، المسابقة)
     let channel = '', comp = '', country = '';
     const infoMatch = block.match(/<div class="MT_Info">\s*<ul>([\s\S]*?)<\/ul>/);
     if (infoMatch) {
@@ -141,7 +124,6 @@ function parseMatches(html, section) {
       comp = (parts.slice(1).join(',') || fullComp).trim();
     }
 
-    // رابط المشاهدة
     const watchMatch = block.match(/<a href="([^"]+)"[^>]*title="شاهد[^"]*"/);
     const watchUrl = watchMatch ? watchMatch[1].trim() : '';
 
@@ -151,11 +133,7 @@ function parseMatches(html, section) {
       home_team: { name: tmNames[0], logo: logos[0] || '' },
       away_team: { name: tmNames[1], logo: logos[1] || '' },
       time: time,
-      score: {
-        home: homeGoals,
-        away: awayGoals,
-        display: homeGoals + ' - ' + awayGoals
-      },
+      score: { home: homeGoals, away: awayGoals, display: homeGoals + ' - ' + awayGoals },
       status: status,
       status_label: statusLabel,
       channel: channel,
@@ -164,7 +142,6 @@ function parseMatches(html, section) {
       watch_url: watchUrl
     });
   }
-
   return matches;
 }
 
@@ -176,10 +153,7 @@ async function scrapeSection(section) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
+        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
       }
     });
     if (!r.ok) return [];
@@ -245,60 +219,34 @@ function svgResponse(svg) {
   });
 }
 
-// ============== نقطة الدخول ==============
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
-        }
-      });
+      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
     }
 
-    // ===== PWA =====
     if (path === '/manifest.json' || path === '/manifest.webmanifest') {
       return new Response(JSON.stringify(MANIFEST, null, 2), {
-        headers: {
-          'Content-Type': 'application/manifest+json',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=86400'
-        }
+        headers: { 'Content-Type': 'application/manifest+json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' }
       });
     }
 
     if (path === '/sw.js') {
       return new Response(SW_CODE, {
-        headers: {
-          'Content-Type': 'application/javascript; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-          'Service-Worker-Allowed': '/',
-          'Cache-Control': 'public, max-age=86400'
-        }
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Service-Worker-Allowed': '/', 'Cache-Control': 'public, max-age=86400' }
       });
     }
 
-    if (path === '/icon-192.png' || path === '/icon-512.png') {
-      return svgResponse(ICON_192_SVG);
-    }
+    if (path === '/icon-192.png' || path === '/icon-512.png') return svgResponse(ICON_192_SVG);
+    if (path === '/icon-maskable.png') return svgResponse(ICON_MASK_SVG);
 
-    if (path === '/icon-maskable.png') {
-      return svgResponse(ICON_MASK_SVG);
-    }
-
-    // ===== Scraping =====
     if (path === '/' || path === '/scrape/all') {
       const cache = caches.default;
       const cached = await cache.match(request);
       if (cached) return cached;
-
       const matches = await scrapeAllSections();
       const response = jsonResponse(buildAllResponse(matches));
       ctx.waitUntil(cache.put(request, response.clone()));
@@ -311,7 +259,6 @@ export default {
       const cache = caches.default;
       const cached = await cache.match(request);
       if (cached) return cached;
-
       const matches = await scrapeAllSections();
       const response = jsonResponse({
         source: BASE_URL,
@@ -325,7 +272,6 @@ export default {
       return response;
     }
 
-    // ===== Debug =====
     if (path === '/debug') {
       const targetUrl = url.searchParams.get('url') || BASE_URL + '/matches-today/';
       try {
@@ -339,13 +285,12 @@ export default {
         const html = await r.text();
         const matches = parseMatches(html, 'debug');
 
-        // معلومات تشخيصية
-        const ayMatchPositions = [];
+        const ayPositions = [];
         let p = 0;
         while (true) {
           const i = html.indexOf('<div class="AY_Match', p);
           if (i === -1) break;
-          ayMatchPositions.push(i);
+          ayPositions.push(i);
           p = i + 1;
         }
 
@@ -353,17 +298,16 @@ export default {
           target_url: targetUrl,
           status: r.status,
           html_length: html.length,
-          AY_Match_opening_count: ayMatchPositions.length,
+          AY_Match_opening_count: ayPositions.length,
           matches_parsed: matches.length,
           sample_matches: matches.slice(0, 3),
-          first_match_block: matches.length > 0 ? html.substring(ayMatchPositions[0], ayMatchPositions[1] || html.length).substring(0, 1500) : ''
+          first_block_excerpt: matches.length > 0 ? html.substring(ayPositions[0], Math.min(ayPositions[0] + 2000, ayPositions[1] || html.length)).substring(0, 1500) : 'no matches parsed'
         });
       } catch (e) {
         return jsonResponse({ error: e.message, stack: e.stack }, 500);
       }
     }
 
-    // ===== Health =====
     if (path === '/health') {
       return jsonResponse({
         status: 'ok',
@@ -374,9 +318,6 @@ export default {
       });
     }
 
-    return new Response('Not Found', {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    });
+    return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
 };
