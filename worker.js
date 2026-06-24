@@ -1,9 +1,9 @@
 const BASE_URL = 'https://www.yallashoot-id1.xyz';
 const CACHE_TTL_SECONDS = 3600;
 const TELEGRAM = {
-  username: 'gmt_apt',
-  url: 'https://t.me/gmt_apt',
-  description: 'اشترك لتصلك تنبيهات المباريات أولاً بأول'
+  username: 'boot_RM',
+  url: 'https://t.me/boot_RM',
+  description: 'اشترك للدعاية والاعلان علي منتجك 📢📢 تواصل علي تلجرام'
 };
 const SECTIONS = {
   yesterday: 'matches-yesterday',
